@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import * as XLSX from "xlsx";
 import { prisma } from "@/lib/prisma";
@@ -89,7 +90,7 @@ export async function POST(request: NextRequest) {
         return;
       }
 
-      const emailKey = parsed.data.email.toLowerCase();
+      const emailKey = parsed.data.email; // already lowercased by schema
       const duplicateRow = emailsInFile.get(emailKey);
       if (duplicateRow !== undefined) {
         errors.push({
@@ -140,30 +141,43 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const created = await prisma.$transaction(async (tx) => {
-      const results = [];
-      for (const row of normalizedRows) {
-        const passwordHash = await bcrypt.hash(row.password, 10);
-        const user = await tx.user.create({
-          data: {
-            firstName: row.firstName,
-            lastName: row.lastName,
-            email: row.email,
-            age: row.age,
-            password: passwordHash,
-          },
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-            age: true,
-          },
-        });
-        results.push(user);
-      }
-      return results;
-    });
+    // Hash outside the DB transaction so large imports do not expire the tx.
+    const prepared = await Promise.all(
+      normalizedRows.map(async (row) => ({
+        firstName: row.firstName,
+        lastName: row.lastName,
+        email: row.email,
+        age: row.age,
+        passwordHash: await bcrypt.hash(row.password, 10),
+      })),
+    );
+
+    const created = await prisma.$transaction(
+      async (tx) => {
+        const results = [];
+        for (const row of prepared) {
+          const user = await tx.user.create({
+            data: {
+              firstName: row.firstName,
+              lastName: row.lastName,
+              email: row.email,
+              age: row.age,
+              password: row.passwordHash,
+            },
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              age: true,
+            },
+          });
+          results.push(user);
+        }
+        return results;
+      },
+      { timeout: 60_000 },
+    );
 
     return NextResponse.json({
       message: `Successfully added ${created.length} user(s)`,
@@ -171,6 +185,15 @@ export async function POST(request: NextRequest) {
       users: created,
     });
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return NextResponse.json(
+        {
+          error: "Validation failed. No users were added.",
+          errors: [{ row: 0, message: "A user with this email already exists" }],
+        },
+        { status: 409 },
+      );
+    }
     console.error("Bulk upload error:", error);
     return NextResponse.json({ error: "Failed to process Excel file" }, { status: 500 });
   }
