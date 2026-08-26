@@ -1,63 +1,96 @@
 # SenseWork
 
-A [Next.js](https://nextjs.org) web application (App Router, TypeScript, Tailwind CSS). Work in progress — currently a fresh scaffold awaiting its first feature build-out.
+Next.js user management app with JWT auth, paginated dashboard, and Excel bulk upload.
 
 ## Tech Stack
 
-| Layer      | Choice                                |
-| ---------- | ------------------------------------- |
-| Framework  | Next.js 16 (App Router)               |
-| UI         | React 19                               |
-| Language   | TypeScript 5                           |
-| Styling    | Tailwind CSS 4                          |
-| Linting    | ESLint 9 + `eslint-config-next`        |
-| Package mgr| pnpm 11 (`packageManager` pinned)      |
+| Layer | Choice |
+| --- | --- |
+| Framework | Next.js 16 (App Router) |
+| UI | React 19 + Tailwind CSS 4 |
+| Forms / data | React Hook Form, TanStack Query, Zod |
+| ORM / DB | Prisma + PostgreSQL |
+| Auth | JWT (`jose`) in httpOnly cookies |
+| Excel | SheetJS (`xlsx`) |
+| Packaging | Docker + Docker Compose |
 
-## Project Structure
+## Features
 
-```
-.
-├── public/            # Static assets (logos, icons)
-├── src/
-│   └── app/           # App Router pages & layouts
-│       ├── globals.css    # Tailwind entry + theme tokens
-│       ├── layout.tsx     # Root layout (Geist fonts, metadata)
-│       └── page.tsx       # Home page
-├── .gitignore
-├── eslint.config.mjs
-├── next.config.ts
-├── package.json
-├── pnpm-workspace.yaml     # Build allowlist for native deps
-├── postcss.config.mjs
-└── tsconfig.json
-```
+- Login at `/` with JWT cookie auth
+- Middleware redirects authenticated users to `/dashboard` and expired/missing tokens back to `/`
+- `/dashboard` — paginated user list with age filters via URL params (`page`, `ageMin`, `ageMax`)
+- `/dashboard/add` — create a user (React Hook Form + Zod)
+- `/dashboard/addMany` — Excel bulk import with row-level Zod validation and all-or-nothing transactions
+- `/dashboard/[userId]` — user detail view
+- Seeded default admin user: **admin / admin**
 
-## Getting Started
+## Excel format
 
-Requirements: Node.js 20+, pnpm 11.
+| name | surname | email | age | password |
+| --- | --- | --- | --- | --- |
+| John | Doe | johndoe@example.com | 25 | 123456 |
+
+On any validation or duplicate error, the API returns the failing row number(s) and writes **no** users.
+
+## Local setup
+
+Requirements: Node.js 20+, pnpm 11, PostgreSQL 16+.
 
 ```bash
-pnpm install     # install dependencies
-pnpm dev         # start dev server → http://localhost:3000
+cp .env.example .env
+# edit DATABASE_URL / JWT_SECRET if needed
+
+pnpm install
+pnpm db:migrate
+pnpm db:seed
+pnpm dev
 ```
 
-The home page is served from `src/app/page.tsx` and hot-reloads as you edit it.
+Open [http://localhost:3000](http://localhost:3000) and sign in with `admin` / `admin`.
+
+## Docker
+
+```bash
+docker compose up --build
+```
+
+App: [http://localhost:3000](http://localhost:3000)  
+Postgres: `localhost:5432` (`sensework` / `sensework` / db `sensework`)
 
 ## Scripts
 
-| Command        | Description                    |
-| -------------- | ------------------------------ |
-| `pnpm dev`     | Start the development server   |
-| `pnpm build`   | Production build               |
-| `pnpm start`   | Serve the production build     |
-| `pnpm lint`    | Lint with ESLint               |
+| Command | Description |
+| --- | --- |
+| `pnpm dev` | Development server |
+| `pnpm build` | Production build |
+| `pnpm start` | Serve production build |
+| `pnpm lint` | ESLint |
+| `pnpm db:migrate` | Create/apply migrations (dev) |
+| `pnpm db:migrate:deploy` | Apply migrations (prod) |
+| `pnpm db:seed` | Seed default admin user |
+| `pnpm db:studio` | Prisma Studio |
 
-## Learn More
+## Project structure
 
-- [Next.js Documentation](https://nextjs.org/docs) — features and API
-- [Learn Next.js](https://nextjs.org/learn) — interactive tutorial
-- [Tailwind CSS v4](https://tailwindcss.com/docs) — styling utilities
+```
+prisma/                 # schema, migrations, seed
+src/
+  app/                  # routes + API handlers
+  components/           # UI forms and tables
+  lib/                  # prisma, auth, zod schemas
+  middleware.ts         # JWT redirects
+docker/                 # container entrypoint
+Dockerfile
+docker-compose.yml
+```
 
-## Deploy
+## Environment
 
-The easiest way to deploy is the [Vercel Platform](https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app) — see the [Next.js deployment docs](https://nextjs.org/docs/app/building-your-application/deploying) for details.
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | PostgreSQL connection string |
+| `JWT_SECRET` | Secret for signing JWT cookies |
+
+## Deploy notes
+
+Vercel publication will be added next. For Vercel you will need a hosted Postgres instance and the env vars above.
