@@ -1,63 +1,92 @@
 # SenseWork
 
-A [Next.js](https://nextjs.org) web application (App Router, TypeScript, Tailwind CSS). Work in progress — currently a fresh scaffold awaiting its first feature build-out.
+Next.js user-management case study: JWT auth, paginated dashboard, single-user create, and atomic Excel bulk import.
 
-## Tech Stack
+## Tech stack
 
-| Layer      | Choice                                |
-| ---------- | ------------------------------------- |
-| Framework  | Next.js 16 (App Router)               |
-| UI         | React 19                               |
-| Language   | TypeScript 5                           |
-| Styling    | Tailwind CSS 4                          |
-| Linting    | ESLint 9 + `eslint-config-next`        |
-| Package mgr| pnpm 11 (`packageManager` pinned)      |
+| Layer | Choice |
+| --- | --- |
+| Framework | Next.js 16 (App Router) + React 19 |
+| ORM / DB | Prisma 6 + PostgreSQL |
+| Auth | JWT (`jose`) in HttpOnly cookie |
+| Validation | Zod |
+| Forms / data | React Hook Form + TanStack Query |
+| Excel | `xlsx` |
+| Styling | Tailwind CSS 4 |
+| Tests | Vitest |
+| Packaging | Docker Compose (app + Postgres) |
 
-## Project Structure
+## Quick start (local)
 
-```
-.
-├── public/            # Static assets (logos, icons)
-├── src/
-│   └── app/           # App Router pages & layouts
-│       ├── globals.css    # Tailwind entry + theme tokens
-│       ├── layout.tsx     # Root layout (Geist fonts, metadata)
-│       └── page.tsx       # Home page
-├── .gitignore
-├── eslint.config.mjs
-├── next.config.ts
-├── package.json
-├── pnpm-workspace.yaml     # Build allowlist for native deps
-├── postcss.config.mjs
-└── tsconfig.json
-```
-
-## Getting Started
-
-Requirements: Node.js 20+, pnpm 11.
+Requirements: Node.js 20+, pnpm 11, PostgreSQL 16.
 
 ```bash
-pnpm install     # install dependencies
-pnpm dev         # start dev server → http://localhost:3000
+cp .env.example .env
+# edit DATABASE_URL / JWT_SECRET if needed
+
+pnpm install
+pnpm db:migrate   # creates schema
+pnpm db:seed      # admin / admin (hashed)
+pnpm dev          # http://localhost:3000
 ```
 
-The home page is served from `src/app/page.tsx` and hot-reloads as you edit it.
+Default seeded credentials:
+
+- **Email:** `admin`
+- **Password:** `admin`
+
+## Docker
+
+```bash
+docker compose up --build
+```
+
+App: http://localhost:3000  
+Postgres: `localhost:5432` (`sensework` / `sensework`)
+
+## Routes
+
+| Path | Description |
+| --- | --- |
+| `/` | Login |
+| `/dashboard` | User list (`?page=&minAge=&maxAge=`) |
+| `/dashboard/add` | Add user |
+| `/dashboard/addMany` | Excel bulk import |
+| `/dashboard/[userId]` | User detail |
+
+## Excel import
+
+Required headers (mapped to DB fields):
+
+| Excel | Database |
+| --- | --- |
+| `name` | `firstName` |
+| `surname` | `lastName` |
+| `email` | `email` |
+| `age` | `age` |
+| `password` | `password` (hashed) |
+
+Import is **all-or-nothing**. Validation failures return:
+
+```json
+{
+  "code": "INVALID_IMPORT",
+  "errors": [{ "row": 14, "field": "email", "message": "Invalid email address" }]
+}
+```
 
 ## Scripts
 
-| Command        | Description                    |
-| -------------- | ------------------------------ |
-| `pnpm dev`     | Start the development server   |
-| `pnpm build`   | Production build               |
-| `pnpm start`   | Serve the production build     |
-| `pnpm lint`    | Lint with ESLint               |
+| Command | Purpose |
+| --- | --- |
+| `pnpm dev` | Dev server |
+| `pnpm build` / `pnpm start` | Production |
+| `pnpm lint` | ESLint |
+| `pnpm typecheck` | TypeScript |
+| `pnpm test` | Vitest |
+| `pnpm db:migrate` | Prisma migrate (dev) |
+| `pnpm db:seed` | Seed admin user |
 
-## Learn More
+## Environment
 
-- [Next.js Documentation](https://nextjs.org/docs) — features and API
-- [Learn Next.js](https://nextjs.org/learn) — interactive tutorial
-- [Tailwind CSS v4](https://tailwindcss.com/docs) — styling utilities
-
-## Deploy
-
-The easiest way to deploy is the [Vercel Platform](https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app) — see the [Next.js deployment docs](https://nextjs.org/docs/app/building-your-application/deploying) for details.
+See `.env.example`. Never commit real secrets. `.env` is gitignored.
