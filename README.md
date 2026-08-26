@@ -1,52 +1,39 @@
 # SenseWork
 
-Next.js user management app with JWT auth, paginated dashboard, and Excel bulk upload.
+Next.js user-management case study: JWT auth, paginated dashboard, single-user create, and atomic Excel bulk import.
 
-## Tech Stack
+## Tech stack
 
 | Layer | Choice |
 | --- | --- |
-| Framework | Next.js 16 (App Router) |
-| UI | React 19 + Tailwind CSS 4 |
-| Forms / data | React Hook Form, TanStack Query, Zod |
-| ORM / DB | Prisma + PostgreSQL |
-| Auth | JWT (`jose`) in httpOnly cookies |
-| Excel | SheetJS (`xlsx`) |
-| Packaging | Docker + Docker Compose |
+| Framework | Next.js 16 (App Router) + React 19 |
+| ORM / DB | Prisma 6 + PostgreSQL |
+| Auth | JWT (`jose`) in HttpOnly cookie |
+| Validation | Zod |
+| Forms / data | React Hook Form + TanStack Query |
+| Excel | `xlsx` |
+| Styling | Tailwind CSS 4 |
+| Tests | Vitest |
+| Packaging | Docker Compose (app + Postgres) |
 
-## Features
+## Quick start (local)
 
-- Login at `/` with JWT cookie auth
-- Middleware redirects authenticated users to `/dashboard` and expired/missing tokens back to `/`
-- `/dashboard` — paginated user list with age filters via URL params (`page`, `ageMin`, `ageMax`)
-- `/dashboard/add` — create a user (React Hook Form + Zod)
-- `/dashboard/addMany` — Excel bulk import with row-level Zod validation and all-or-nothing transactions
-- `/dashboard/[userId]` — user detail view
-- Seeded default admin user: **admin / admin**
-
-## Excel format
-
-| name | surname | email | age | password |
-| --- | --- | --- | --- | --- |
-| John | Doe | johndoe@example.com | 25 | 123456 |
-
-On any validation or duplicate error, the API returns the failing row number(s) and writes **no** users.
-
-## Local setup
-
-Requirements: Node.js 20+, pnpm 11, PostgreSQL 16+.
+Requirements: Node.js 20+, pnpm 11, PostgreSQL 16.
 
 ```bash
 cp .env.example .env
 # edit DATABASE_URL / JWT_SECRET if needed
 
 pnpm install
-pnpm db:migrate
-pnpm db:seed
-pnpm dev
+pnpm db:migrate   # creates schema
+pnpm db:seed      # admin / admin (hashed)
+pnpm dev          # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) and sign in with `admin` / `admin`.
+Default seeded credentials:
+
+- **Email:** `admin`
+- **Password:** `admin`
 
 ## Docker
 
@@ -54,43 +41,52 @@ Open [http://localhost:3000](http://localhost:3000) and sign in with `admin` / `
 docker compose up --build
 ```
 
-App: [http://localhost:3000](http://localhost:3000)  
-Postgres: `localhost:5432` (`sensework` / `sensework` / db `sensework`)
+App: http://localhost:3000  
+Postgres: `localhost:5432` (`sensework` / `sensework`)
+
+## Routes
+
+| Path | Description |
+| --- | --- |
+| `/` | Login |
+| `/dashboard` | User list (`?page=&minAge=&maxAge=`) |
+| `/dashboard/add` | Add user |
+| `/dashboard/addMany` | Excel bulk import |
+| `/dashboard/[userId]` | User detail |
+
+## Excel import
+
+Required headers (mapped to DB fields):
+
+| Excel | Database |
+| --- | --- |
+| `name` | `firstName` |
+| `surname` | `lastName` |
+| `email` | `email` |
+| `age` | `age` |
+| `password` | `password` (hashed) |
+
+Import is **all-or-nothing**. Validation failures return:
+
+```json
+{
+  "code": "INVALID_IMPORT",
+  "errors": [{ "row": 14, "field": "email", "message": "Invalid email address" }]
+}
+```
 
 ## Scripts
 
-| Command | Description |
+| Command | Purpose |
 | --- | --- |
-| `pnpm dev` | Development server |
-| `pnpm build` | Production build |
-| `pnpm start` | Serve production build |
+| `pnpm dev` | Dev server |
+| `pnpm build` / `pnpm start` | Production |
 | `pnpm lint` | ESLint |
-| `pnpm db:migrate` | Create/apply migrations (dev) |
-| `pnpm db:migrate:deploy` | Apply migrations (prod) |
-| `pnpm db:seed` | Seed default admin user |
-| `pnpm db:studio` | Prisma Studio |
-
-## Project structure
-
-```
-prisma/                 # schema, migrations, seed
-src/
-  app/                  # routes + API handlers
-  components/           # UI forms and tables
-  lib/                  # prisma, auth, zod schemas
-  middleware.ts         # JWT redirects
-docker/                 # container entrypoint
-Dockerfile
-docker-compose.yml
-```
+| `pnpm typecheck` | TypeScript |
+| `pnpm test` | Vitest |
+| `pnpm db:migrate` | Prisma migrate (dev) |
+| `pnpm db:seed` | Seed admin user |
 
 ## Environment
 
-| Variable | Purpose |
-| --- | --- |
-| `DATABASE_URL` | PostgreSQL connection string |
-| `JWT_SECRET` | Secret for signing JWT cookies |
-
-## Deploy notes
-
-Vercel publication will be added next. For Vercel you will need a hosted Postgres instance and the env vars above.
+See `.env.example`. Never commit real secrets. `.env` is gitignored.

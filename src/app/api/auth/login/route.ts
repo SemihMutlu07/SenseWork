@@ -1,47 +1,66 @@
-import { NextRequest, NextResponse } from "next/server";
-import bcrypt from "bcryptjs";
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { AUTH_COOKIE, authCookieOptions, signAuthToken } from "@/lib/auth";
-import { loginSchema } from "@/lib/validations";
+import {
+  createAuthToken,
+  setAuthCookie,
+} from "@/lib/auth";
+import { verifyPassword } from "@/lib/password";
+import { loginSchema, normalizeEmail } from "@/lib/validations/user";
+import { jsonError } from "@/lib/api";
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
+  let body: unknown;
   try {
-    const body = await request.json();
-    const parsed = loginSchema.safeParse(body);
-
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid credentials", details: parsed.error.flatten() },
-        { status: 400 },
-      );
-    }
-
-    const { email, password } = parsed.data;
-    const user = await prisma.user.findUnique({ where: { email } });
-
-    if (!user) {
-      return NextResponse.json({ error: "Invalid email/username or password" }, { status: 401 });
-    }
-
-    const valid = await bcrypt.compare(password, user.password);
-    if (!valid) {
-      return NextResponse.json({ error: "Invalid email/username or password" }, { status: 401 });
-    }
-
-    const token = await signAuthToken({ sub: user.id, email: user.email });
-    const response = NextResponse.json({
-      user: {
-        id: user.id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-      },
+    body = await request.json();
+  } catch {
+    return jsonError(400, {
+      code: "INVALID_JSON",
+      message: "Request body must be JSON",
     });
-
-    response.cookies.set(AUTH_COOKIE, token, authCookieOptions());
-    return response;
-  } catch (error) {
-    console.error("Login error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
+
+  const parsed = loginSchema.safeParse(body);
+  if (!parsed.success) {
+    return jsonError(400, {
+      code: "VALIDATION_ERROR",
+      message: "Invalid credentials payload",
+      errors: parsed.error.issues.map((issue) => ({
+        field: issue.path.join(".") || "form",
+        message: issue.message,
+      })),
+    });
+  }
+
+  // Seeded admin uses email "admin"; normalize other emails for lookup.
+  const emailInput = parsed.data.email.trim();
+  const email =
+    emailInput.toLowerCase() === "admin"
+      ? "admin"
+      : normalizeEmail(emailInput);
+
+  const user = await prisma.user.findUnique({ where: { email } });
+
+  // Constant-ish failure path: always run a compare when possible.
+  const valid =
+    user != null &&
+    (await verifyPassword(parsed.data.password, user.password));
+
+  if (!valid) {
+    return jsonError(401, {
+      code: "INVALID_CREDENTIALS",
+      message: "Invalid email or password",
+    });
+  }
+
+  const token = await createAuthToken({ id: user.id, email: user.email });
+  await setAuthCookie(token);
+
+  return NextResponse.json({
+    user: {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+    },
+  });
 }

@@ -1,30 +1,32 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { AUTH_COOKIE, verifyAuthToken } from "@/lib/auth";
 
-const protectedPrefixes = ["/dashboard"];
+const PUBLIC_PATHS = new Set(["/"]);
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get(AUTH_COOKIE)?.value;
-  const session = token ? await verifyAuthToken(token) : null;
+  const payload = token ? await verifyAuthToken(token) : null;
+  const isAuthenticated = Boolean(payload);
 
-  const isProtected = protectedPrefixes.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
-  );
-  const isLoginPage = pathname === "/";
+  const isDashboard = pathname.startsWith("/dashboard");
+  const isLogin = pathname === "/";
 
-  if (isProtected && !session) {
+  if (isDashboard && !isAuthenticated) {
     const loginUrl = new URL("/", request.url);
-    loginUrl.searchParams.set("redirect", pathname);
-    const response = NextResponse.redirect(loginUrl);
-    if (token) {
-      response.cookies.delete(AUTH_COOKIE);
-    }
-    return response;
+    loginUrl.searchParams.set("next", pathname + request.nextUrl.search);
+    return NextResponse.redirect(loginUrl);
   }
 
-  if (isLoginPage && session) {
+  if (isLogin && isAuthenticated) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
+  }
+
+  // Avoid caching authenticated HTML.
+  if (isDashboard || PUBLIC_PATHS.has(pathname)) {
+    const response = NextResponse.next();
+    response.headers.set("Cache-Control", "no-store");
+    return response;
   }
 
   return NextResponse.next();

@@ -1,16 +1,17 @@
-import { BulkUploadForm } from "@/components/bulk-upload-form";
+import { BulkImportForm } from "@/components/bulk-import-form";
 
 export default function AddManyPage() {
   return (
-    <section className="space-y-4">
+    <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold">Bulk upload</h1>
-        <p className="text-sm text-foreground/70">
-          Import users from Excel. Validation errors are returned with row numbers and nothing is
-          saved if any row fails.
+        <h1 className="text-2xl font-semibold tracking-tight">Bulk import</h1>
+        <p className="mt-1 text-sm text-muted">
+          Upload an Excel workbook to create multiple users atomically.
         </p>
       </div>
-      <BulkUploadForm />
-    </section>
+      <div className="rounded-lg border border-border bg-white p-6">
+        <BulkImportForm />
+      </div>
+    </div>
   );
 }

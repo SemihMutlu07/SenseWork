@@ -1,10 +1,10 @@
 import { PrismaClient } from "@prisma/client";
-import bcrypt from "bcryptjs";
+import { hashPassword } from "../src/lib/password";
 
 const prisma = new PrismaClient();
 
 async function main() {
-  const passwordHash = await bcrypt.hash("admin", 10);
+  const password = await hashPassword("admin");
 
   await prisma.user.upsert({
     where: { email: "admin" },
@@ -12,18 +12,18 @@ async function main() {
       firstName: "Admin",
       lastName: "User",
       age: 30,
-      password: passwordHash,
+      password,
     },
     create: {
       firstName: "Admin",
       lastName: "User",
       email: "admin",
       age: 30,
-      password: passwordHash,
+      password,
     },
   });
 
-  console.log("Seeded default user: username/email=admin, password=admin");
+  console.log("Seeded admin user (email: admin / password: admin)");
 }
 
 main()

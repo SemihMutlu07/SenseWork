@@ -1,31 +1,35 @@
 import type { Metadata } from "next";
-import { DM_Sans, Fraunces } from "next/font/google";
-import { QueryProvider } from "@/providers/query-provider";
+import { Geist, Geist_Mono } from "next/font/google";
+import { Providers } from "@/components/providers";
 import "./globals.css";
 
-const dmSans = DM_Sans({
-  variable: "--font-dm-sans",
+const geistSans = Geist({
+  variable: "--font-geist-sans",
   subsets: ["latin"],
 });
 
-const fraunces = Fraunces({
-  variable: "--font-fraunces",
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
   subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
   title: "SenseWork",
-  description: "User management with JWT auth, dashboard, and Excel bulk upload",
+  description: "User management dashboard",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
     <html
       lang="en"
-      className={`${dmSans.variable} ${fraunces.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col font-sans">
-        <QueryProvider>{children}</QueryProvider>
+      <body className="min-h-full flex flex-col bg-slate-50 text-slate-900">
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
