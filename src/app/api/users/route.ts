@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { createUserSchema } from "@/lib/validations";
+import { clampPage, parsePositiveInt } from "@/lib/pagination";
 
 export async function GET(request: NextRequest) {
   const session = await getSession();
@@ -11,8 +13,8 @@ export async function GET(request: NextRequest) {
   }
 
   const { searchParams } = request.nextUrl;
-  const page = Math.max(1, Number(searchParams.get("page") ?? "1") || 1);
-  const pageSize = Math.min(50, Math.max(1, Number(searchParams.get("pageSize") ?? "10") || 10));
+  const requestedPage = Math.max(1, parsePositiveInt(searchParams.get("page"), 1) || 1);
+  const pageSize = Math.min(50, Math.max(1, parsePositiveInt(searchParams.get("pageSize"), 10) || 10));
   const ageMinRaw = searchParams.get("ageMin");
   const ageMaxRaw = searchParams.get("ageMax");
 
@@ -32,23 +34,23 @@ export async function GET(request: NextRequest) {
     if (ageMax !== undefined && !Number.isNaN(ageMax)) where.age.lte = ageMax;
   }
 
-  const [total, users] = await Promise.all([
-    prisma.user.count({ where }),
-    prisma.user.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        email: true,
-        age: true,
-        createdAt: true,
-      },
-    }),
-  ]);
+  const total = await prisma.user.count({ where });
+  const { page, totalPages } = clampPage(requestedPage, total, pageSize);
+
+  const users = await prisma.user.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    skip: (page - 1) * pageSize,
+    take: pageSize,
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+      age: true,
+      createdAt: true,
+    },
+  });
 
   return NextResponse.json({
     users,
@@ -56,7 +58,7 @@ export async function GET(request: NextRequest) {
       page,
       pageSize,
       total,
-      totalPages: Math.max(1, Math.ceil(total / pageSize)),
+      totalPages,
     },
   });
 }
@@ -78,8 +80,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const existing = await prisma.user.findUnique({
-      where: { email: parsed.data.email },
+    const existing = await prisma.user.findFirst({
+      where: { email: { equals: parsed.data.email, mode: "insensitive" } },
     });
 
     if (existing) {
@@ -107,6 +109,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ user }, { status: 201 });
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return NextResponse.json({ error: "A user with this email already exists" }, { status: 409 });
+    }
     console.error("Create user error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }

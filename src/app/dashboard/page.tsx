@@ -1,6 +1,8 @@
 import { Suspense } from "react";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { UsersTable } from "@/components/users-table";
+import { clampPage, parsePositiveInt } from "@/lib/pagination";
 
 type SearchParams = Promise<{
   page?: string;
@@ -15,8 +17,8 @@ export default async function DashboardPage({
   searchParams: SearchParams;
 }) {
   const params = await searchParams;
-  const page = Math.max(1, Number(params.page ?? "1") || 1);
-  const pageSize = Math.min(50, Math.max(1, Number(params.pageSize ?? "10") || 10));
+  const requestedPage = Math.max(1, parsePositiveInt(params.page, 1) || 1);
+  const pageSize = Math.min(50, Math.max(1, parsePositiveInt(params.pageSize, 10) || 10));
   const ageMin =
     params.ageMin !== undefined && params.ageMin !== ""
       ? Number(params.ageMin)
@@ -39,23 +41,33 @@ export default async function DashboardPage({
     if (ageMax !== undefined && !Number.isNaN(ageMax)) where.age.lte = ageMax;
   }
 
-  const [total, users] = await Promise.all([
-    prisma.user.count({ where }),
-    prisma.user.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        email: true,
-        age: true,
-        createdAt: true,
-      },
-    }),
-  ]);
+  const total = await prisma.user.count({ where });
+  const { page, totalPages } = clampPage(requestedPage, total, pageSize);
+
+  // Keep URL coherent with the rendered page (stale page + filter desync).
+  if (page !== requestedPage) {
+    const qs = new URLSearchParams();
+    qs.set("page", String(page));
+    if (params.pageSize) qs.set("pageSize", String(pageSize));
+    if (params.ageMin !== undefined && params.ageMin !== "") qs.set("ageMin", params.ageMin);
+    if (params.ageMax !== undefined && params.ageMax !== "") qs.set("ageMax", params.ageMax);
+    redirect(`/dashboard?${qs.toString()}`);
+  }
+
+  const users = await prisma.user.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    skip: (page - 1) * pageSize,
+    take: pageSize,
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+      age: true,
+      createdAt: true,
+    },
+  });
 
   const serialized = users.map((user) => ({
     ...user,
@@ -77,7 +89,7 @@ export default async function DashboardPage({
             page,
             pageSize,
             total,
-            totalPages: Math.max(1, Math.ceil(total / pageSize)),
+            totalPages,
           }}
           ageMin={params.ageMin}
           ageMax={params.ageMax}
